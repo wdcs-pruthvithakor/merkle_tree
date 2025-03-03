@@ -1,20 +1,24 @@
-use sha2::{Digest, Sha256};
+// tree.rs
+
 use std::collections::HashMap;
 use crate::proof::MerkleProof;
+use crate::hasher::Hasher;
 
 /// Represents a Merkle tree data structure
-pub struct MerkleTree {
+pub struct MerkleTree<H: Hasher> {
     /// The leaves of the tree
     leaves: Vec<Vec<u8>>,
     /// The cached nodes of the tree, indexed by level and position
     nodes: HashMap<(usize, usize), Vec<u8>>,
     /// The height of the tree
     height: usize,
+    /// The hasher for the tree
+    hasher: H,
 }
 
-impl MerkleTree {
-    /// Creates a new Merkle tree from a list of leaves
-    pub fn new(leaves: Vec<Vec<u8>>) -> Self {
+impl<H: Hasher> MerkleTree<H> {
+    /// Creates a new Merkle tree with a specific hasher
+    pub fn new(leaves: Vec<Vec<u8>>, hasher: H) -> Self {
         if leaves.is_empty() {
             panic!("Cannot create a Merkle tree with no leaves");
         }
@@ -23,6 +27,7 @@ impl MerkleTree {
             leaves: leaves.clone(),
             nodes: HashMap::new(),
             height: 0,
+            hasher,
         };
         
         // Calculate the height of the tree
@@ -87,7 +92,7 @@ impl MerkleTree {
     }
     
     /// Generates a Merkle proof for the leaf at the given index
-    pub fn generate_proof(&self, leaf_index: usize) -> Result<MerkleProof, &'static str> {
+    pub fn generate_proof(&self, leaf_index: usize) -> Result<MerkleProof<H>, &'static str> {
         if leaf_index >= self.leaves.len() {
             return Err("Leaf index out of bounds");
         }
@@ -113,24 +118,22 @@ impl MerkleTree {
             current_index /= 2;
         }
         
-        Ok(MerkleProof {
-            leaf: self.leaves[leaf_index].clone(),
+        Ok(MerkleProof::new(
+            self.leaves[leaf_index].clone(),
             proof,
             leaf_index,
-        })
+            self.hasher.clone(),
+        ))
     }
     
     /// Verifies a Merkle proof
-    pub fn verify_proof(&self, proof: &MerkleProof) -> bool {
+    pub fn verify_proof(&self, proof: &MerkleProof<H>) -> bool {
         let calculated_root = proof.calculate_root();
         self.root() == calculated_root
     }
     
     /// Hashes two nodes together to create a parent node
     fn hash_pair(&self, left: &[u8], right: &[u8]) -> Vec<u8> {
-        let mut hasher = Sha256::new();
-        hasher.update(left);
-        hasher.update(right);
-        hasher.finalize().to_vec()
+        self.hasher.hash_pair(left, right)
     }
 }

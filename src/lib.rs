@@ -1,14 +1,17 @@
 pub mod utils;
 pub mod tree;
 pub mod proof;
+pub mod hasher;
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hasher::{Hasher, Sha256Hasher};
     
     #[test]
     fn test_merkle_tree() {
+        let hasher = Sha256Hasher::new();
         let leaves = vec![
             utils::string_to_bytes("leaf1"),
             utils::string_to_bytes("leaf2"),
@@ -17,10 +20,10 @@ mod tests {
         ];
         
         let leaves = leaves.iter()
-            .map(|leaf| utils::hash_leaf(leaf))
+            .map(|leaf| hasher.hash_leaf(leaf))
             .collect();
         
-        let tree = tree::MerkleTree::new(leaves);
+        let tree = tree::MerkleTree::new(leaves, hasher);
         
         // Test root calculation
         let root = tree.root();
@@ -31,7 +34,7 @@ mod tests {
         assert!(tree.verify_proof(&proof));
         
         // Test against a different root
-        let different_root = utils::hash_leaf(&utils::string_to_bytes("different"));
+        let different_root = Sha256Hasher::new().hash_leaf(&utils::string_to_bytes("different"));
         assert_ne!(root, different_root);
         assert!(!proof.verify(&different_root));
     }
@@ -65,6 +68,20 @@ mod tests {
         
         // Test proof generation and verification
         let proof = tree.generate_proof(0).unwrap();
+        assert!(tree.verify_proof(&proof));
+    }
+    
+    #[test]
+    fn test_custom_hasher() {
+        // Example of using a custom hasher
+        use crate::hasher::Blake2bHasher;
+        
+        let hasher = Blake2bHasher::new(32); // 32-byte output size
+        let strings = vec!["leaf1", "leaf2", "leaf3", "leaf4"];
+        let tree = utils::create_tree_from_strings_with_hasher(strings, hasher);
+        
+        // Test proof generation and verification
+        let proof = tree.generate_proof(2).unwrap();
         assert!(tree.verify_proof(&proof));
     }
 }

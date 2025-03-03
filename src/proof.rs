@@ -1,33 +1,42 @@
-/// Represents a Merkle proof
-use sha2::{Digest, Sha256};
+use crate::hasher::Hasher;
 
-pub struct MerkleProof {
+/// Represents a Merkle proof
+pub struct MerkleProof<H: Hasher> {
     /// The leaf being proven
     pub leaf: Vec<u8>,
     /// The proof nodes
     pub proof: Vec<Vec<u8>>,
     /// The index of the leaf in the tree
     pub leaf_index: usize,
+    /// The hasher for the proof
+    pub hasher: H,
 }
 
-impl MerkleProof {
+impl<H: Hasher> MerkleProof<H> {
+    /// Creates a new Merkle proof
+    pub fn new(leaf: Vec<u8>, proof: Vec<Vec<u8>>, leaf_index: usize, hasher: H) -> Self {
+        MerkleProof {
+            leaf,
+            proof,
+            leaf_index,
+            hasher,
+        }
+    }
+    
     /// Calculates the root given the proof
     pub fn calculate_root(&self) -> Vec<u8> {
         let mut current = self.leaf.clone();
         let mut current_index = self.leaf_index;
         
         for sibling in &self.proof {
-            let mut hasher = Sha256::new();
-            
-            if current_index % 2 == 0 {
-                hasher.update(&current);
-                hasher.update(sibling);
+            current = if current_index % 2 == 0 {
+                // If current node is left child, hash(current + sibling)
+                self.hasher.hash_pair(&current, sibling)
             } else {
-                hasher.update(sibling);
-                hasher.update(&current);
-            }
+                // If current node is right child, hash(sibling + current)
+                self.hasher.hash_pair(sibling, &current)
+            };
             
-            current = hasher.finalize().to_vec();
             current_index /= 2;
         }
         

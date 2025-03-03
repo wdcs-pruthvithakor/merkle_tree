@@ -1,7 +1,7 @@
 use merkle_tree::utils;
 
 fn main() {
-    // Create a tree from strings
+    // Create a tree from strings using the default SHA-256 hasher
     let data = vec!["Create", "a", "tree", "from", "strings"];
     let tree = utils::create_tree_from_strings(data);
     
@@ -23,4 +23,8 @@ fn main() {
     // Verify the proof against the root
     let is_valid = proof.verify(&root);
     println!("Proof verifies against root: {}", is_valid);
+    
+    // Example of using a custom hasher
+    // let custom_hasher = merkle_tree::hasher::Blake2bHasher::new(32);
+    // let custom_tree = utils::create_tree_from_strings_with_hasher(data, custom_hasher);
 }
