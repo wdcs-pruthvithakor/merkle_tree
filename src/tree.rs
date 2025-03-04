@@ -1,7 +1,7 @@
 // tree.rs
 
 use std::collections::HashMap;
-use crate::proof::MerkleProof;
+use crate::proof::{MerkleProof, ProofItem};
 use crate::hasher::Hasher;
 
 /// Represents a Merkle tree data structure
@@ -18,11 +18,13 @@ pub struct MerkleTree<H: Hasher> {
 
 impl<H: Hasher> MerkleTree<H> {
     /// Creates a new Merkle tree with a specific hasher
-    pub fn new(leaves: Vec<Vec<u8>>, hasher: H) -> Self {
+    pub fn new(mut leaves: Vec<Vec<u8>>, hasher: H) -> Self {
         if leaves.is_empty() {
             panic!("Cannot create a Merkle tree with no leaves");
         }
-        
+
+        leaves.sort();
+
         let mut tree = MerkleTree {
             leaves: leaves.clone(),
             nodes: HashMap::new(),
@@ -85,10 +87,20 @@ impl<H: Hasher> MerkleTree<H> {
     pub fn get_leaf(&self, index: usize) -> Option<&Vec<u8>> {
         self.leaves.get(index)
     }
-    
+
+    /// get the hasher of the tree
+    pub fn get_hasher(&self) -> H {
+        self.hasher.clone()
+    }
+
     /// Gets the number of leaves in the tree
     pub fn leaf_count(&self) -> usize {
         self.leaves.len()
+    }
+    
+    /// Finds the leaf index for a given leaf value
+    pub fn find_leaf_index(&self, leaf_value: &[u8]) -> Option<usize> {
+        self.leaves.iter().position(|leaf| leaf == leaf_value)
     }
     
     /// Generates a Merkle proof for the leaf at the given index
@@ -97,22 +109,30 @@ impl<H: Hasher> MerkleTree<H> {
             return Err("Leaf index out of bounds");
         }
         
-        let mut proof = Vec::new();
+        let mut proof_items = Vec::new();
         let mut current_index = leaf_index;
         
         for level in 0..self.height - 1 {
-            let sibling_index = if current_index % 2 == 0 {
-                current_index + 1
+            let is_right_child = current_index % 2 == 1;
+            let sibling_index = if is_right_child {
+                current_index - 1  // Sibling is on the left
             } else {
-                current_index - 1
+                current_index + 1  // Sibling is on the right
             };
             
             if let Some(sibling) = self.nodes.get(&(level, sibling_index)) {
-                proof.push(sibling.clone());
+                proof_items.push(ProofItem {
+                    hash: sibling.clone(),
+                    is_left: is_right_child,  // If current is right, sibling is left
+                });
             } else {
                 // If the sibling doesn't exist (at the edge of an odd-length level),
-                // use the current node as its own sibling
-                proof.push(self.nodes.get(&(level, current_index)).unwrap().clone());
+                // use the current node as its own sibling but with appropriate direction
+                let current_node = self.nodes.get(&(level, current_index)).unwrap().clone();
+                proof_items.push(ProofItem {
+                    hash: current_node,
+                    is_left: is_right_child,
+                });
             }
             
             current_index /= 2;
@@ -120,10 +140,18 @@ impl<H: Hasher> MerkleTree<H> {
         
         Ok(MerkleProof::new(
             self.leaves[leaf_index].clone(),
-            proof,
-            leaf_index,
+            proof_items,
             self.hasher.clone(),
         ))
+    }
+    
+    /// Generates a Merkle proof for the given leaf value
+    pub fn generate_proof_by_value(&self, leaf_value: &[u8]) -> Result<MerkleProof<H>, &'static str> {
+        if let Some(index) = self.find_leaf_index(leaf_value) {
+            self.generate_proof(index)
+        } else {
+            Err("Leaf value not found in the tree")
+        }
     }
     
     /// Verifies a Merkle proof
@@ -131,6 +159,7 @@ impl<H: Hasher> MerkleTree<H> {
         let calculated_root = proof.calculate_root();
         self.root() == calculated_root
     }
+
     
     /// Hashes two nodes together to create a parent node
     fn hash_pair(&self, left: &[u8], right: &[u8]) -> Vec<u8> {
